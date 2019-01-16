@@ -1,0 +1,20 @@
+/* .col-3 {
+    float: left;
+    width: 50%;
+}
+
+.col-9 {
+    float: left;
+    width: 50%;
+}
+
+
+.row:after {
+    content: "";
+    display: table;
+    clear: both;
+}
+*/
+body {
+    background: purple;
+}

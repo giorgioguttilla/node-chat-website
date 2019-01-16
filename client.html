@@ -1,0 +1,356 @@
+<!--https://classes.engineering.wustl.edu/cse330/index.php?title=Socket.IO-->
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Chat</title>
+    <link rel="stylesheet" type="text/css" href="style.css" />
+    <link rel="stylesheet" type="text/css" href="/public/css/chatStyle.css" />
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script type="text/javascript">
+        var username = "";
+
+        var socketio = io.connect();
+        socketio.on("message_to_client", function (data) {
+            //Append an HR thematic break and the escaped HTML of the new message
+            document.getElementById("chatlog").appendChild(document.createElement("hr"));
+            document.getElementById("chatlog").appendChild(document.createTextNode(data['message']));
+        });
+
+        socketio.on("private_message", function (data) {
+            //if the private message is to this guy
+            if (data.user === username) {
+                document.getElementById("chatlog").appendChild(document.createElement("hr"));
+                document.getElementById("chatlog").appendChild(document.createTextNode(data['message']));
+            }
+        });
+
+        socketio.on("poke", function (data) {
+            //if the private message is to this guy
+            if (data.user === username) {
+                alert("poked!");
+            }
+        });
+
+        function sendMessage() {
+            var msg = document.getElementById("message_input").value;
+            var words = msg.split(" ");
+            if (words[0] === "/kick") {
+                var toUser = words[1];
+                socketio.emit("kick_user", {
+                    user: toUser
+                });
+            }
+            if (words[0] === "/ban") {
+                var toUser = words[1];
+                socketio.emit("ban_user", {
+                    user: toUser
+                });
+            }
+            socketio.emit("message_to_server", {
+                message: msg
+            });
+        }
+    </script>
+</head>
+
+<body>
+
+
+    <div id="login">
+        Username:
+        <input id="usernameField" type="text" />
+        <button id="loginButton">Submit</button>
+    </div>
+
+    <div id="lobby">
+        <button id="logout">Change Username</button><br>
+        Room Name:
+        <input id="roomNameField" type="text" />
+        <br>
+        Private Room?
+        <input id="privateCheck" type="checkbox" />
+        <br>
+        <div id="roomPass">
+            Password:
+            <input id="roomPassField" type="text" />
+        </div>
+        <script>
+            //hides password field if the room is public
+            
+            $("#roomPass").hide();
+
+            $("#privateCheck").click(function(){
+                if($("#privateCheck").is(':checked')){
+                    $("#roomPass").show();
+                } else {
+                    $("#roomPass").hide();
+                    $("#roomPassField").val("");
+                }
+            });
+            
+        </script>
+        <button id="createRoomButton">Create New Room</button>
+        <br>
+        Join Room:
+        <ul id="roomList">
+
+        </ul>
+    </div>
+
+    <div id="chatroom">
+        <button id="backToMain">Back to Main Page</button><br>
+        Room Host:
+        <div id="roomHostName"></div><br>
+        <div class="row">
+            <div class="col-3">
+                Users:
+                <ul id="listOfUsers"></ul>
+            </div>
+
+            <div class="col-9">
+                <input type="text" id="message_input" />
+                <button onclick="sendMessage()">send</button>
+                <div id="chatlog"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="pass">
+        Enter Password For:
+        <div id="passPageRoomName"></div>
+        <br>
+        <input type="text" id="password_login_input" />
+        <button id="enterPasswordButton">Submit</button>
+    </div>
+
+    <script>
+        //starts on login page
+        $(document).ready(function () {
+            loginShow();
+        });
+
+        //DOM stuff
+        function loginShow() {
+            $("#login").show();
+            $("#lobby").hide();
+            $("#chatroom").hide();
+            $("#pass").hide();
+        }
+
+        function lobbyShow() {
+            $("#login").hide();
+            $("#lobby").show();
+            $("#chatroom").hide();
+            $("#pass").hide();
+            getAllChatrooms();
+        }
+
+        function chatShow() {
+            $("#login").hide();
+            $("#lobby").hide();
+            $("#chatroom").show();
+            $("#pass").hide();
+            document.getElementById("chatlog").innerHTML = '';
+
+        }
+
+        function passShow(nameOfRoom) {
+            $("#login").hide();
+            $("#lobby").hide();
+            $("#chatroom").hide();
+            $("#pass").show();
+            //displays room name at top of password page   
+            document.getElementById("passPageRoomName").innerHTML = nameOfRoom;
+        }
+
+
+        //listeners
+        //logs in as user
+        $("#loginButton").click(function () {
+            var usr = $("#usernameField").val();
+            username = usr;
+            console.log(usr);
+            socketio.emit('username', {
+                username: usr
+            });
+            lobbyShow();
+            //getAllChatrooms();
+        });
+        /////////////////////////////////////////////////////////////////////////////
+        socketio.on('username_ok', function () {
+            lobbyShow();
+        });
+
+        //create new chatroom
+        $("#createRoomButton").click(function () {
+            var rn = $("#roomNameField").val();
+            var priv = $("#privateCheck").is(':checked');
+            var pwd = $("#roomPassField").val();
+            console.log(rn);
+            console.log(priv);
+            console.log(pwd);
+
+            //dont need to pass username because we have it on server
+            socketio.emit('create-new-room', {
+                roomname: rn,
+                isPrivate: priv,
+                password: pwd
+            });
+            //chatShow();
+        });
+
+        socketio.on('room-create-success', function () {
+            chatShow();
+        });
+
+        //try to login to a password protected room
+        $("#enterPasswordButton").click(function () {
+            var rnm = document.getElementById("passPageRoomName").innerHTML;
+            var pswd = document.getElementById("password_login_input").value;
+            console.log(pswd);
+            socketio.emit('private_connect', {
+                roomname: rnm,
+                password: pswd
+            });
+        });
+
+
+        //redirect based on login success
+        socketio.on('login_success', function () {
+            chatShow();
+        });
+        socketio.on('login_failure', function () {
+            lobbyShow();
+        });
+
+
+        socketio.on('secure_kick', function (data) {
+            if (username === data.name) {
+                socketio.emit('reset_room_props');
+                alert("kicked from room");
+                lobbyShow();
+
+            }
+        })
+
+
+
+        //updates room info based on incoming data
+        socketio.on('room_info', function (data) {
+            //clears and refreshes list
+            $("#listOfUsers").empty();
+            //goes through each user and adds an appropriate li elem, buttons to kick and ban if host
+            if (username === data.room.hostname) {
+                data.room.users.forEach(function (uname) {
+                    var outer = document.createElement("li");
+                    outer.innerHTML = uname;
+                    var inner = document.createElement('button');
+                    inner.innerHTML = 'Kick';
+                    inner.class = uname;
+                    var innerban = document.createElement('button');
+                    innerban.innerHTML = 'Ban';
+                    innerban.class = uname;
+
+
+                    inner.addEventListener('click', function (event) {
+                        console.log(event.target.class);
+                        socketio.emit('kick_user', {
+                            user: event.target.class
+                        });
+                    });
+                    innerban.addEventListener('click', function (event) {
+                        console.log(event.target.class);
+                        socketio.emit('ban_user', {
+                            user: event.target.class
+                        });
+                    });
+
+                    outer.appendChild(inner);
+                    outer.appendChild(innerban);
+                    document.getElementById("listOfUsers").appendChild(outer);
+                });
+            } else {
+                data.room.users.forEach(function (uname) {
+                    var usertag = document.createElement("li");
+                    usertag.innerHTML = uname;
+                    document.getElementById("listOfUsers").appendChild(usertag);
+                });
+            }
+            document.getElementById("roomHostName").innerHTML = data.room.hostname;
+        });
+
+
+        //when the logout button is pressed, tell the server
+        $("#logout").click(function () {
+            socketio.emit('log_out');
+            loginShow();
+        });
+
+        //when the back to main is pressed tell the server
+        $("#backToMain").click(function () {
+            socketio.emit('leave_room');
+            lobbyShow();
+        });
+
+
+
+        //get list of current chatrooms and place it in the DOM
+        function getAllChatrooms() {
+            socketio.emit('return_chatrooms');
+        }
+
+        //when chatroom list is returned, display it in DOM
+        socketio.on('get_chatrooms', function (rooms) {
+            console.log(rooms);
+            document.getElementById("roomList").innerHTML = '';
+            for (var key in rooms) {
+
+                //creates outside shell
+                var outside = document.createElement("li");
+                if (rooms[key].private) {
+                    outside.innerHTML = "Private Room<br>";
+                } else {
+                    outside.innerHTML = "Public Room<br>";
+                }
+
+                //creates room button element that on click will send a socket command to join that room
+                var roomListItem = document.createElement("button");
+                roomListItem.innerHTML = rooms[key].name;
+                //ensures privacy data is accessible to listener
+                if (rooms[key].private) {
+                    roomListItem.class = "private";
+                } else {
+                    roomListItem.class = "public";
+                }
+                //listener passes the button pressed through so its name can be used for connecting
+                roomListItem.addEventListener('click', function (event) {
+                    //function for clicking room button
+
+                    //depending on room privacy, emit different requests
+                    if (event.target.class === "private") {
+                        //show password page
+                        passShow(event.target.innerHTML);
+                    } else {
+                        socketio.emit('public_connect', {
+                            roomname: event.target.innerHTML
+                        });
+                        console.log(event.target.innerHTML);
+                        //chatShow();
+                    }
+                });
+
+                //places shell and button in dom
+                outside.appendChild(roomListItem);
+                document.getElementById("roomList").appendChild(outside);
+
+            }
+
+        });
+    </script>
+
+</body>
+
+</html>
